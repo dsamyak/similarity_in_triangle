@@ -1099,6 +1099,95 @@ html, body, #root {
 .check-btn:hover { transform: translateY(-1px); }
 .check-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
 
+/* ─── DRAG & DROP — HINT BADGE ─────────────────────────────────────────────── */
+.drag-hint-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: linear-gradient(135deg, rgba(0,212,255,0.08), rgba(255,215,0,0.06));
+  border: 1px solid rgba(0,212,255,0.22);
+  border-radius: 20px;
+  padding: 5px 14px;
+  font-family: var(--font-ui);
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: rgba(0,212,255,0.85);
+  letter-spacing: 0.02em;
+  animation: pulseBorder 2.5s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes pulseBorder {
+  0%, 100% { border-color: rgba(0,212,255,0.22); box-shadow: none; }
+  50%       { border-color: rgba(0,212,255,0.5);  box-shadow: 0 0 10px rgba(0,212,255,0.15); }
+}
+
+/* ─── COORDINATE SUMMARY PANEL ─────────────────────────────────────────────── */
+.coord-summary-row {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+  max-width: 400px;
+  justify-content: center;
+}
+
+.coord-summary {
+  flex: 1;
+  background: rgba(11,20,55,0.75);
+  border: 1.5px solid rgba(0,212,255,0.25);
+  border-radius: var(--r-md);
+  padding: 8px 12px;
+  font-family: var(--font-ui);
+  min-width: 0;
+  transition: border-color 0.25s, box-shadow 0.25s;
+}
+
+.coord-summary:hover {
+  box-shadow: 0 0 12px rgba(0,212,255,0.1);
+}
+
+.coord-summary__title {
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--cyan);
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.coord-summary__grid {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.coord-summary__row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+}
+
+.coord-vertex {
+  font-weight: 800;
+  min-width: 14px;
+  text-align: center;
+  font-family: var(--font-ui);
+}
+
+.coord-val {
+  color: var(--gray-200);
+  font-family: monospace;
+  font-size: 0.74rem;
+  letter-spacing: 0.02em;
+  transition: color 0.2s;
+}
+
+
+
 /* ─── PROOF BUILDER ────────────────────────────────────────────────────────── */
 .proof-table {
   display: flex;
@@ -1155,6 +1244,10 @@ html, body, #root {
 }
 .proof-card:hover { background: rgba(0,212,255,0.1); border-color: rgba(0,212,255,0.4); color: var(--cyan); transform: translateY(-2px); }
 .proof-card.used { opacity: 0.3; cursor: not-allowed; pointer-events: none; }
+.proof-card.card-selected { background: rgba(255,215,0,0.12); border-color: var(--gold); color: var(--gold); box-shadow: 0 0 10px rgba(255,215,0,0.2); }
+.proof-slot.slot-selected { outline: 2px solid var(--gold) !important; background: rgba(255,215,0,0.06); }
+
+
 
 /* ─── CONGRUENCE DETECTIVE ─────────────────────────────────────────────────── */
 .criterion-cards {

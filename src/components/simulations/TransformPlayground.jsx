@@ -1,5 +1,5 @@
-// components/simulations/TransformPlayground.jsx — Station A
-import { useState, useCallback } from 'react';
+﻿// components/simulations/TransformPlayground.jsx — Station A
+import { useState, useCallback, useRef } from 'react';
 import { translate, rotate, reflect, dilate, isMatch, centroid } from '../../utils/geometry.js';
 import { narrate } from '../../hooks/useAudio.js';
 
@@ -26,12 +26,20 @@ const ROUNDS = [
     requiredOps: ['dilation'] },
 ];
 
-function toSvgPt(pt, size=300, worldRange=14) {
+const SVG_SIZE = 280;
+const WORLD_RANGE = 14;
+
+function toSvgPt(pt, size=SVG_SIZE, worldRange=WORLD_RANGE) {
   const s = size / worldRange;
   return [pt[0]*s + size/2, size/2 - pt[1]*s];
 }
 
-function TriSVG({ tri, color, dashed=false, size=300 }) {
+function fromSvgPt(svgX, svgY, size=SVG_SIZE, worldRange=WORLD_RANGE) {
+  const s = size / worldRange;
+  return [(svgX - size/2) / s, (size/2 - svgY) / s];
+}
+
+function TriSVG({ tri, color, dashed=false, size=SVG_SIZE }) {
   const pts = ['A','B','C'].map(k => toSvgPt(tri[k], size));
   const d = pts.map((p,i) => (i===0?'M':'L')+p.join(',')).join(' ')+'Z';
   return (
@@ -48,7 +56,7 @@ function TriSVG({ tri, color, dashed=false, size=300 }) {
   );
 }
 
-function Grid({ size=300, worldRange=14 }) {
+function Grid({ size=SVG_SIZE, worldRange=WORLD_RANGE }) {
   const s = size / worldRange;
   const lines = [];
   for(let i=-7;i<=7;i++) {
@@ -63,8 +71,26 @@ function Grid({ size=300, worldRange=14 }) {
   return <>{lines}</>;
 }
 
+function CoordSummary({ tri, color, label, matched }) {
+  const fmt = v => (v % 1 === 0 ? v : v.toFixed(2));
+  return (
+    <div className="coord-summary" style={{ borderColor: matched ? 'var(--green)' : color }}>
+      <div className="coord-summary__title" style={{ color: matched ? 'var(--green)' : color }}>
+        {matched ? '✓ ' : ''}{label}
+      </div>
+      <div className="coord-summary__grid">
+        {['A','B','C'].map(k => (
+          <div key={k} className="coord-summary__row">
+            <span className="coord-vertex" style={{ color }}>{k}</span>
+            <span className="coord-val">({fmt(tri[k][0])}, {fmt(tri[k][1])})</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function TransformPlayground({ round, audioEnabled, onRoundComplete }) {
-  // cfg is always derived from the current round prop (component re-mounts on round change via key prop)
   const cfg = ROUNDS[Math.min(round, ROUNDS.length-1)];
   const [live, setLive] = useState(() => ({ ...cfg.startTriangle }));
   const [log, setLog] = useState([]);
@@ -73,10 +99,12 @@ export default function TransformPlayground({ round, audioEnabled, onRoundComple
   const [scale, setScale] = useState(2);
   const [matched, setMatched] = useState(false);
   const [showHint, setShowHint] = useState(false);
+  const [dragVertex, setDragVertex] = useState(null);
+
+  const svgRef = useRef(null);
 
   const addLog = (msg) => setLog(l => [...l, msg]);
 
-  // Check is defined with useCallback but cfg is stable (component remounts each round)
   const check = useCallback((pts) => {
     if (isMatch(pts, cfg.targetTriangle, 0.5)) {
       setMatched(true);
@@ -84,6 +112,60 @@ export default function TransformPlayground({ round, audioEnabled, onRoundComple
       setTimeout(() => onRoundComplete(), 1400);
     }
   }, [cfg.targetTriangle, audioEnabled, onRoundComplete]);
+
+  /* ─── Pointer-based drag logic ─── */
+  const getWorldCoords = (e) => {
+    const svg = svgRef.current;
+    if (!svg) return null;
+    const rect = svg.getBoundingClientRect();
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    const svgX = ((clientX - rect.left) / rect.width) * SVG_SIZE;
+    const svgY = ((clientY - rect.top) / rect.height) * SVG_SIZE;
+    return fromSvgPt(svgX, svgY);
+  };
+
+  const handleSvgPointerDown = (e) => {
+    if (matched) return;
+    const svg = svgRef.current;
+    if (!svg) return;
+    const rect = svg.getBoundingClientRect();
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    const svgX = ((clientX - rect.left) / rect.width) * SVG_SIZE;
+    const svgY = ((clientY - rect.top) / rect.height) * SVG_SIZE;
+
+    for (const k of ['A','B','C']) {
+      const [vx, vy] = toSvgPt(live[k]);
+      if (Math.hypot(svgX - vx, svgY - vy) <= 14) {
+        setDragVertex(k);
+        e.preventDefault();
+        return;
+      }
+    }
+  };
+
+  const handleSvgPointerMove = (e) => {
+    if (!dragVertex || matched) return;
+    e.preventDefault();
+    const w = getWorldCoords(e);
+    if (!w) return;
+    const snapped = [Math.round(w[0]), Math.round(w[1])];
+    setLive(prev => ({ ...prev, [dragVertex]: snapped }));
+  };
+
+  const handleSvgPointerUp = (e) => {
+    if (!dragVertex) return;
+    const w = getWorldCoords(e) || live[dragVertex];
+    const snapped = w ? [Math.round(w[0]), Math.round(w[1])] : live[dragVertex];
+    setLive(prev => {
+      const next = { ...prev, [dragVertex]: snapped };
+      addLog(`Drag ${dragVertex} → (${snapped[0]}, ${snapped[1]})`);
+      check(next);
+      return next;
+    });
+    setDragVertex(null);
+  };
 
   const applyTranslate = () => {
     if (matched) return;
@@ -118,36 +200,91 @@ export default function TransformPlayground({ round, audioEnabled, onRoundComple
     check(next);
   };
 
-  const reset = () => { setLive({ ...cfg.startTriangle }); setLog([]); setMatched(false); };
+  const reset = () => { setLive({ ...cfg.startTriangle }); setLog([]); setMatched(false); setDragVertex(null); };
 
-  const SVG_SIZE = 280;
+  const liveColor = matched ? '#4ADE80' : (dragVertex ? '#FFD700' : '#00D4FF');
 
   return (
     <div className="station-layout">
-      <div className="station-canvas">
-        <svg width={SVG_SIZE} height={SVG_SIZE} style={{background:'rgba(11,20,55,0.7)', borderRadius:12, border:'1px solid rgba(0,212,255,0.15)'}}>
+      <div className="station-canvas" style={{ flexDirection:'column', gap:10 }}>
+        {/* Drag hint */}
+        {!matched && (
+          <div className="drag-hint-badge">
+            ✦ Drag the glowing vertices on the canvas — or use the controls →
+          </div>
+        )}
+
+        <svg
+          ref={svgRef}
+          width={SVG_SIZE} height={SVG_SIZE}
+          style={{
+            background:'rgba(11,20,55,0.7)', borderRadius:12,
+            border:`1px solid ${dragVertex ? 'rgba(255,215,0,0.4)' : 'rgba(0,212,255,0.15)'}`,
+            cursor: dragVertex ? 'grabbing' : 'crosshair',
+            touchAction:'none', userSelect:'none',
+            transition:'border-color 0.2s',
+          }}
+          onMouseDown={handleSvgPointerDown}
+          onMouseMove={handleSvgPointerMove}
+          onMouseUp={handleSvgPointerUp}
+          onMouseLeave={handleSvgPointerUp}
+          onTouchStart={handleSvgPointerDown}
+          onTouchMove={handleSvgPointerMove}
+          onTouchEnd={handleSvgPointerUp}
+        >
           <Grid size={SVG_SIZE}/>
-          {/* Target (dashed, gold) */}
           <TriSVG tri={cfg.targetTriangle} color="rgba(255,215,0,0.8)" dashed size={SVG_SIZE}/>
-          {/* Live triangle (cyan / green when matched) */}
-          <TriSVG tri={live} color={matched ? '#4ADE80' : '#00D4FF'} size={SVG_SIZE}/>
+          <TriSVG tri={live} color={liveColor} size={SVG_SIZE}/>
+
+          {/* Drag handles */}
+          {!matched && ['A','B','C'].map(k => {
+            const [vx, vy] = toSvgPt(live[k]);
+            const isActive = dragVertex === k;
+            return (
+              <g key={`dh-${k}`}>
+                {isActive && <circle cx={vx} cy={vy} r={20} fill="rgba(255,215,0,0.1)" stroke="rgba(255,215,0,0.3)" strokeWidth={1}/>}
+                <circle
+                  cx={vx} cy={vy} r={isActive ? 13 : 10}
+                  fill={isActive ? '#FFD700' : '#00D4FF'}
+                  fillOpacity={isActive ? 0.9 : 0.55}
+                  stroke={isActive ? '#FFF' : '#00D4FF'}
+                  strokeWidth={2}
+                  style={{
+                    cursor: 'grab',
+                    filter: isActive
+                      ? 'drop-shadow(0 0 8px #FFD700)'
+                      : 'drop-shadow(0 0 5px #00D4FF)',
+                    transition:'r 0.15s, fill-opacity 0.15s',
+                  }}
+                />
+                <text x={vx} y={vy+4} textAnchor="middle" fill="#fff" fontSize={9} fontWeight={800} style={{pointerEvents:'none'}}>{k}</text>
+              </g>
+            );
+          })}
+
           {matched && (
             <text x={SVG_SIZE/2} y={24} textAnchor="middle" fill="#4ADE80" fontSize={18} fontWeight={900}>✓ Matched!</text>
           )}
         </svg>
+
         {/* Legend */}
-        <div style={{display:'flex',gap:14,marginTop:8}}>
+        <div style={{display:'flex',gap:14}}>
           <div style={{display:'flex',alignItems:'center',gap:5,fontSize:'0.72rem',color:'rgba(0,212,255,0.8)'}}>
             <div style={{width:14,height:3,background:'rgba(0,212,255,0.8)',borderRadius:2}}/> Your triangle
           </div>
           <div style={{display:'flex',alignItems:'center',gap:5,fontSize:'0.72rem',color:'rgba(255,215,0,0.8)'}}>
-            <div style={{width:14,height:3,background:'rgba(255,215,0,0.8)',borderRadius:2,borderTop:'2px dashed'}}/> Target
+            <div style={{width:14,height:3,background:'rgba(255,215,0,0.8)',borderRadius:2}}/> Target
           </div>
+        </div>
+
+        {/* Coordinate Summary */}
+        <div className="coord-summary-row">
+          <CoordSummary tri={live} color="#00D4FF" label="Your Triangle" matched={matched} />
+          <CoordSummary tri={cfg.targetTriangle} color="rgba(255,215,0,0.85)" label="Target" matched={false} />
         </div>
       </div>
 
       <div className="station-controls">
-        {/* Round info */}
         <div className="station-instruction">{cfg.label}</div>
 
         {/* Translate */}
